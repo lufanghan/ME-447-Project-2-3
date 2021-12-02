@@ -25,7 +25,10 @@ def pad_along_axis(array: np.ndarray, target_length: int, axis: int = 0):
     return np.pad(array, pad_width=npad, mode='constant', constant_values=0)
 
 class crossrod:
-    def __init__(self, T, dt, total_length, elements, density, radius, total_external_force, G = 20, E = 40, dim = 3, **kwargs):
+    def __init__(self, T, dt, total_length, elements, density, radius, total_external_force, G = 1E4, E = 1E6, dim = 3, **kwargs):
+        # Plotting
+        self.final_pos = []
+
         # Element Info
         self.e = elements
         self.n = self.e + 1 # nodes
@@ -88,6 +91,8 @@ class crossrod:
         for x in np.arange(0,T+dt,dt):
             self.pos, self.vel = self.position_verlet(dt, self.pos, self.vel)
             self.update(self.pos)
+            self.final_pos.append(self.pos[2,-1])
+
 
     def position_verlet(self, dt, x, v):
         """Does one iteration/timestep using the Position verlet scheme
@@ -109,6 +114,8 @@ class crossrod:
         v_n : float/array-like
             The quantity of interest at the Next time step
         """
+        # temp_x = np.zeros((3,self.n))
+        # x_n = np.zeros((3,self.n))
         temp_x = x + 0.5*dt*v
         v_n = v + dt * self.force_rule(temp_x)
         x_n = temp_x + 0.5 * dt * v_n
@@ -118,41 +125,20 @@ class crossrod:
         # First update
         self.update(temp_pos)
 
-        # print("S_hat = {0}".format(self.S_hat))
-        #
-        # print("s = {0}".format(self.s))
-
-        # Governing Equation 3
-        # print("m = {0}".format(self.m.shape))
-        # print("forces = {0}".format(self.forces.shape))
-        # print("sigma = s = {0}".format(self.s.shape))
-        # print("S_hat = {0}".format(self.S_hat.shape))
-        # print("dil_fac = {0}".format(np.transpose(self.dil_fac).shape))
-        #dv_dt = (grad_h(self.S_hat @ self.s / self.dil_fac) + self.forces)  / self.m
-
-
-        #print(((self.S_hat * self.s/ self.dil_fac) + self.forces).shape)
-        # a = grad_h(self.S_hat * self.s / self.dil_fac)
-        # c = self.S_hat * self.s / self.dil_fac
-        # print("*************")
-        #print(a.shape)
-        #print(c.shape)
-        #print(self.forces.shape)
-        #b = a + self.forces
         matmul = np.zeros((3,self.e))
-        for i in range(self.e):
-            matmul[:, i] = self.S_hat[:, :, i] @ self.s[:, i]
-
-        # print("S_hat = {0}".format(self.S_hat[:, :, 0]))
-        # print("s = {0}".format(self.s[:, 0]))
-        # print("matmul = {0}".format(matmul))
-        # sys.exit()
+        # for i in range(self.e):
+        #     matmul[:, i] = self.S_hat[:, :, i] @ self.s[:, i]
+        matmul = np.einsum('ijk,jk->ik',self.S_hat,self.s)
 
         self.internal_force = grad_h(matmul / self.dil_fac, self.n)
 
         dv_dt = (self.internal_force + self.forces)  / self.m
         return dv_dt
+
     def update(self, temp_pos):
+        # Keep 1st node position the same
+        temp_pos[:,0] = 0
+
         # Update Length
         self.l = temp_pos[:,1:] - temp_pos[:,:-1]
         self.l_mag = np.linalg.norm(self.l, axis = 0)
@@ -167,16 +153,16 @@ class crossrod:
         self.s = self.dil_fac * self.tangents - self.directors[2,:,:]
         pass
 
-F = 5
-E = 40
+F = 15
+E = 1E6
 R = .25
 A = np.pi * R**2
 L = 3
+T = 300
+dt = 3E-4
 
-test = crossrod(T = 50, dt = 3E-4, total_length = L, elements = 20, density = 5E3, radius = R, total_external_force = F)
-print(test.internal_force)
-print(test.s)
-simulation_strain = np.sum(test.s)
+test = crossrod(T = 300, dt = 3E-4, total_length = L, elements = 20, density = 5E3, radius = R, total_external_force = F)
+print("position = {0}".format(test.pos))
 real_strain = (F*L)/(E*A-F)
-print(simulation_strain)
 print(real_strain)
+plt.plot(np.arange(0,T+dt,dt),test.final_pos)
